@@ -5,38 +5,28 @@ pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-- group: SnowflakeCredentials  # Link to the variable group
+  JFROG_ARTIFACTORY_URL: 'https://your_jfrog_instance.jfrog.io/artifactory'
+  JFROG_REPO: 'your-repo-name'
+  ARTIFACT_NAME: 'repo_artifacts.zip'
+  AZURE_VM_IP: 'your_vm_ip'
+  AZURE_VM_USERNAME: 'your_vm_user'
+  AZURE_VM_FOLDER: '/path/to/your/folder'
 
-stages:
-- stage: InstallSnowCLI
-  displayName: Install SnowCLI
+steps:
+# Stage 1: Push repo to JFrog
+- stage: PushToJFrog
+  displayName: 'Push Repository to JFrog'
   jobs:
-  - job: Install
+  - job: UploadArtifacts
     steps:
+    - task: UsePythonVersion@1
+      inputs:
+        versionSpec: '3.x'
     - script: |
-        curl -sSL https://github.com/Snowflake-Labs/snowcli/releases/latest/download/install.sh | bash
-        snow --version
-      displayName: 'Install SnowCLI'
-
-- stage: LoginToSnowflake
-  displayName: Login to Snowflake
-  dependsOn: InstallSnowCLI
-  jobs:
-  - job: Login
-    steps:
-    - script: |
-        snow configure --account $(SNOWFLAKE_ACCOUNT) --username $(SNOWFLAKE_USERNAME) --auth-type password
-        snow configure set password $(SNOWFLAKE_PASSWORD)
-      displayName: 'Login to Snowflake'
-
-- stage: ExecuteSQLScript
-  displayName: Execute SQL Script
-  dependsOn: LoginToSnowflake
-  jobs:
-  - job: Execute
-    steps:
-    - checkout: self  # Pull the code from the repository
-    - script: |
-        snow sql --file "$(Build.SourcesDirectory)/snowflake_tables.sql"
-      displayName: 'Execute Snowflake SQL Script'
-
+        zip -r $(ARTIFACT_NAME) .
+        curl -u $(JFROG_USERNAME):$(JFROG_PASSWORD) -T $(ARTIFACT_NAME) $(JFROG_ARTIFACTORY_URL)/$(JFROG_REPO)
+        displayName:
+          Upload zip folder artifact to JFrog
+      timeoutInMinutes:
+        displayName:
+          Upload zip folder artifact
