@@ -12,21 +12,38 @@ variables:
   AZURE_VM_USERNAME: 'your_vm_user'
   AZURE_VM_FOLDER: '/path/to/your/folder'
 
-steps:
+stages:
 # Stage 1: Push repo to JFrog
 - stage: PushToJFrog
   displayName: 'Push Repository to JFrog'
   jobs:
   - job: UploadArtifacts
     steps:
-    - task: UsePythonVersion@1
+    - task: ArchiveFiles@2
       inputs:
-        versionSpec: '3.x'
-    - script: |
-        zip -r $(ARTIFACT_NAME) .
-        curl -u $(JFROG_USERNAME):$(JFROG_PASSWORD) -T $(ARTIFACT_NAME) $(JFROG_ARTIFACTORY_URL)/$(JFROG_REPO)
-        displayName:
-          Upload zip folder artifact to JFrog
-      timeoutInMinutes:
-        displayName:
-          Upload zip folder artifact
+        rootFolderOrFile: '$(System.DefaultWorkingDirectory)'
+        includeRootFolder: false
+        archiveType: 'zip'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/$(ARTIFACT_NAME)'
+    - task: cURLUploader@1
+      inputs:
+        serviceConnection: 'JFrogServiceConnection'
+        files: '$(Build.ArtifactStagingDirectory)/$(ARTIFACT_NAME)'
+        remotePath: '$(JFROG_REPO)/$(ARTIFACT_NAME)'
+
+# Stage 2: Deploy to Azure VM
+- stage: DeployToAzureVM
+  displayName: 'Deploy Artifacts to Azure VM'
+  dependsOn: PushToJFrog
+  jobs:
+  - job: SSHDeployment
+    steps:
+    - task: SSH@0
+      inputs:
+        sshEndpoint: 'AzureVMServiceConnection'
+        runOptions: 'commands'
+        commands: |
+          mkdir -p $(AZURE_VM_FOLDER)
+          cd $(AZURE_VM_FOLDER)
+          wget $(JFROG_ARTIFACTORY_URL)/$(JFROG_REPO)/$(ARTIFACT_NAME) --user=$(JFROG_USERNAME) --password=$(JFROG_PASSWORD)
+          unzip $(ARTIFACT_NAME)
