@@ -1,12 +1,36 @@
-CREATE OR REPLACE TABLE `us-con-gcp-npr-0000376-080822.BDAAS_SANITIZED.CICD_TEST` (
-  COLUMN_1 STRING,
-  COLUMN_2 INT64,
-  COLUMN_3 FLOAT64,
-  COLUMN_4 TIMESTAMP,
-  COLUMN_5 DATE,
-  COLUMN_6 BOOLEAN,
-  COLUMN_7 NUMERIC,
-  COLUMN_8 STRING,
-  COLUMN_9 INT64,
-  COLUMN_10 FLOAT64
-);
+trigger:
+- main  # Adjust the branch name as needed
+
+pool:
+  vmImage: 'ubuntu-latest'  # Use an Ubuntu agent
+
+variables:
+  GCP_PROJECT_ID: 'us-con-gcp-npr-0000376-080822'
+
+steps:
+- task: UsePythonVersion@1
+  inputs:
+    versionSpec: '3.x'
+    addToPath: true
+
+- script: |
+    echo "Installing gcloud SDK..."
+    sudo apt-get update && sudo apt-get install -y apt-transport-https ca-certificates gnupg
+    echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+    sudo apt-get update && sudo apt-get install -y google-cloud-sdk
+
+    echo "Authenticating to GCP..."
+    echo $GCP_SERVICE_ACCOUNT_KEY | base64 --decode > gcp-key.json
+    gcloud auth activate-service-account --key-file=gcp-key.json
+    gcloud config set project $(GCP_PROJECT_ID)
+
+    echo "Executing BigQuery Script..."
+    bq query --use_legacy_sql=false < cicd_test.sql
+  displayName: 'Execute SQL Script in BigQuery'
+
+- task: DeleteFiles@1
+  inputs:
+    SourceFolder: $(System.DefaultWorkingDirectory)
+    Contents: gcp-key.json
+  displayName: 'Clean up credentials'
+
